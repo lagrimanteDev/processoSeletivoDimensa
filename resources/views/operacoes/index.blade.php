@@ -27,11 +27,14 @@
 
 			<div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
 				<h3 class="text-lg font-medium text-gray-900 mb-4">Importar planilha</h3>
-				<form action="{{ route('operacoes.import') }}" method="POST" enctype="multipart/form-data" class="flex items-center gap-3">
+				<form id="import-form" action="{{ route('operacoes.import') }}" method="POST" enctype="multipart/form-data" class="flex items-center gap-3">
 					@csrf
 					<input type="file" name="arquivo" accept=".xlsx,.xls,.csv" class="border-gray-300 rounded-md shadow-sm" required>
-					<x-primary-button>Importar</x-primary-button>
+					<x-primary-button id="import-button">Importar</x-primary-button>
 				</form>
+				<p id="import-warning" class="hidden mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+					Importação iniciada. Este processo pode levar alguns minutos.
+				</p>
 			</div>
 
 			<div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
@@ -70,9 +73,11 @@
 							<tr>
 								<th class="px-3 py-2 text-left font-semibold text-gray-700">Código</th>
 								<th class="px-3 py-2 text-left font-semibold text-gray-700">Cliente</th>
+								<th class="px-3 py-2 text-left font-semibold text-gray-700">CPF</th>
 								<th class="px-3 py-2 text-left font-semibold text-gray-700">Conveniada</th>
-								<th class="px-3 py-2 text-left font-semibold text-gray-700">Valor desembolso</th>
+								<th class="px-3 py-2 text-left font-semibold text-gray-700">Valor da operação</th>
 								<th class="px-3 py-2 text-left font-semibold text-gray-700">Status</th>
+								<th class="px-3 py-2 text-left font-semibold text-gray-700">Produto</th>
 								<th class="px-3 py-2 text-left font-semibold text-gray-700">Ações</th>
 							</tr>
 						</thead>
@@ -81,16 +86,18 @@
 								<tr>
 									<td class="px-3 py-2">{{ $operacao->codigo }}</td>
 									<td class="px-3 py-2">{{ $operacao->cliente?->nome }}</td>
+									<td class="px-3 py-2">{{ $operacao->cliente?->cpf }}</td>
 									<td class="px-3 py-2">{{ $operacao->conveniada?->nome }}</td>
-									<td class="px-3 py-2">R$ {{ number_format((float) $operacao->valor_desembolso, 2, ',', '.') }}</td>
+									<td class="px-3 py-2">R$ {{ number_format((float) ($operacao->valor_desembolso ?: $operacao->valor_requerido), 2, ',', '.') }}</td>
 									<td class="px-3 py-2">{{ $operacao->status }}</td>
+									<td class="px-3 py-2">{{ $operacao->produto }}</td>
 									<td class="px-3 py-2">
 										<a href="{{ route('operacoes.show', $operacao) }}" class="text-indigo-600 hover:text-indigo-800">Detalhes</a>
 									</td>
 								</tr>
 							@empty
 								<tr>
-									<td colspan="6" class="px-3 py-6 text-center text-gray-500">Nenhuma operação encontrada.</td>
+									<td colspan="8" class="px-3 py-6 text-center text-gray-500">Nenhuma operação encontrada.</td>
 								</tr>
 							@endforelse
 						</tbody>
@@ -103,4 +110,22 @@
 			</div>
 		</div>
 	</div>
+
+	<script>
+		document.addEventListener('DOMContentLoaded', function () {
+			const form = document.getElementById('import-form');
+			const warning = document.getElementById('import-warning');
+			const button = document.getElementById('import-button');
+
+			if (!form || !warning || !button) {
+				return;
+			}
+
+			form.addEventListener('submit', function () {
+				warning.classList.remove('hidden');
+				button.disabled = true;
+				button.textContent = 'Importando...';
+			});
+		});
+	</script>
 </x-app-layout>

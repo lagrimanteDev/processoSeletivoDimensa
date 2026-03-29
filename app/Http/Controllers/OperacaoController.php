@@ -35,7 +35,7 @@ class OperacaoController extends Controller
         $clienteId = $authUser instanceof User ? $authUser->cliente_id : null;
 
         $query = Operacao::query()
-            ->select(['id', 'codigo', 'user_id', 'cliente_id', 'conveniada_id', 'valor_desembolso', 'status'])
+            ->select(['id', 'codigo', 'user_id', 'cliente_id', 'conveniada_id', 'valor_requerido', 'valor_desembolso', 'status', 'produto'])
             ->with([
                 'cliente:id,nome,cpf',
                 'conveniada:id,nome',
@@ -104,6 +104,8 @@ class OperacaoController extends Controller
 
     public function import(Request $request)
     {
+        @set_time_limit(0);
+
         $authUser = Auth::user();
         $isAdmin = $authUser instanceof User && $authUser->isAdmin();
         $userId = $authUser instanceof User ? $authUser->id : null;
@@ -118,7 +120,7 @@ class OperacaoController extends Controller
 
         return redirect()
             ->route('operacoes.index')
-            ->with('status', 'Arquivo enviado. A importação foi iniciada em segundo plano e pode levar alguns minutos.');
+            ->with('status', 'Importação iniciada. O processamento ocorre em segundo plano e pode levar alguns minutos.');
     }
 
     public function updateStatus(Request $request, Operacao $operacao)
