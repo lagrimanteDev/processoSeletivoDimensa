@@ -15,11 +15,14 @@ class OperacaoController extends Controller
      * @var array<string, array<int, string>>
      */
     private const STATUS_TRANSITIONS = [
-        'DIGITANDO' => ['PENDENTE', 'CANCELADA'],
-        'PENDENTE' => ['APROVADA', 'CANCELADA'],
-        'APROVADA' => ['PAGA', 'CANCELADA'],
-        'PAGA' => [],
+        'DIGITANDO' => ['PRÉ-ANÁLISE', 'EM ANÁLISE', 'PARA ASSINATURA', 'ASSINATURA CONCLUÍDA', 'CANCELADA'],
+        'PRÉ-ANÁLISE' => ['DIGITANDO', 'EM ANÁLISE', 'PARA ASSINATURA', 'ASSINATURA CONCLUÍDA', 'APROVADA', 'CANCELADA'],
+        'EM ANÁLISE' => ['DIGITANDO', 'PRÉ-ANÁLISE', 'PARA ASSINATURA', 'ASSINATURA CONCLUÍDA', 'APROVADA', 'CANCELADA'],
+        'PARA ASSINATURA' => ['DIGITANDO', 'PRÉ-ANÁLISE', 'EM ANÁLISE', 'ASSINATURA CONCLUÍDA', 'APROVADA', 'CANCELADA'],
+        'ASSINATURA CONCLUÍDA' => ['DIGITANDO', 'PRÉ-ANÁLISE', 'EM ANÁLISE', 'PARA ASSINATURA', 'APROVADA', 'CANCELADA'],
+        'APROVADA' => ['DIGITANDO', 'PRÉ-ANÁLISE', 'EM ANÁLISE', 'PARA ASSINATURA', 'ASSINATURA CONCLUÍDA', 'CANCELADA', 'PAGO AO CLIENTE'],
         'CANCELADA' => [],
+        'PAGO AO CLIENTE' => [],
     ];
 
     /**
@@ -74,7 +77,7 @@ class OperacaoController extends Controller
         }
 
         $operacoes = $query->simplePaginate(15)->withQueryString();
-        $statuses = collect(['DIGITANDO', 'PENDENTE', 'APROVADA', 'PAGA', 'CANCELADA']);
+        $statuses = collect(array_keys(self::STATUS_TRANSITIONS));
 
         return view('operacoes.index', compact('operacoes', 'statuses'));
     }
@@ -149,7 +152,7 @@ class OperacaoController extends Controller
 
         $operacao->update([
             'status' => $novoStatus,
-            'data_pagamento' => $novoStatus === 'PAGA' ? ($operacao->data_pagamento ?? now()->toDateString()) : $operacao->data_pagamento,
+            'data_pagamento' => $novoStatus === 'PAGO AO CLIENTE' ? ($operacao->data_pagamento ?? now()->toDateString()) : $operacao->data_pagamento,
         ]);
 
         $operacao->historicoStatus()->create([

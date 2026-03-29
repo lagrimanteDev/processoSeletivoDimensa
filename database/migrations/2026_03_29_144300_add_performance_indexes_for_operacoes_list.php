@@ -17,7 +17,7 @@ return new class extends Migration
                     $table->index(['status', 'id'], 'operacoes_status_id_index');
                 });
             } catch (\Throwable) {
-                // índice já existente
+
             }
         }
 
@@ -27,7 +27,7 @@ return new class extends Migration
                     $table->index('nome', 'clientes_nome_index');
                 });
             } catch (\Throwable) {
-                // índice já existente
+
             }
         }
     }

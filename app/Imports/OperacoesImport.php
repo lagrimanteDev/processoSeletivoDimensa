@@ -281,14 +281,29 @@ class OperacoesImport implements OnEachRow, WithHeadingRow, WithChunkReading, Sk
         if (is_numeric($value)) {
             return match ((int) $value) {
                 1 => 'DIGITANDO',
-                2 => 'PENDENTE',
-                3 => 'APROVADA',
-                4 => 'PAGA',
-                5 => 'CANCELADA',
+                2 => 'PRÉ-ANÁLISE',
+                3 => 'EM ANÁLISE',
+                4 => 'PARA ASSINATURA',
+                5 => 'ASSINATURA CONCLUÍDA',
+                6 => 'APROVADA',
+                7 => 'CANCELADA',
+                8 => 'PAGO AO CLIENTE',
                 default => 'DIGITANDO',
             };
         }
 
-        return mb_strtoupper((string) $value);
+        $status = mb_strtoupper(trim((string) $value));
+
+        return match ($status) {
+            'DIGITANDO' => 'DIGITANDO',
+            'PRÉ-ANÁLISE', 'PRE-ANALISE', 'PRE ANALISE', 'PENDENTE' => 'PRÉ-ANÁLISE',
+            'EM ANÁLISE', 'EM ANALISE' => 'EM ANÁLISE',
+            'PARA ASSINATURA' => 'PARA ASSINATURA',
+            'ASSINATURA CONCLUÍDA', 'ASSINATURA CONCLUIDA' => 'ASSINATURA CONCLUÍDA',
+            'APROVADA' => 'APROVADA',
+            'CANCELADA' => 'CANCELADA',
+            'PAGO AO CLIENTE', 'PAGA' => 'PAGO AO CLIENTE',
+            default => 'DIGITANDO',
+        };
     }
 }

@@ -19,7 +19,7 @@ class OperacaoStatusTest extends TestCase
         $operacao = $this->criarOperacao('DIGITANDO', $user);
 
         $response = $this->actingAs($user)->patch(route('operacoes.update-status', $operacao), [
-            'status' => 'PENDENTE',
+            'status' => 'PRÉ-ANÁLISE',
         ]);
 
         $response->assertRedirect(route('operacoes.show', $operacao));
@@ -27,37 +27,37 @@ class OperacaoStatusTest extends TestCase
 
         $this->assertDatabaseHas('operacoes', [
             'id' => $operacao->id,
-            'status' => 'PENDENTE',
+            'status' => 'PRÉ-ANÁLISE',
         ]);
 
         $this->assertDatabaseHas('historico_status', [
             'operacao_id' => $operacao->id,
             'status_anterior' => 'DIGITANDO',
-            'status_novo' => 'PENDENTE',
+            'status_novo' => 'PRÉ-ANÁLISE',
             'user_id' => $user->id,
         ]);
     }
 
-    public function test_usuario_nao_pode_fazer_transicao_invalida_de_status(): void
+    public function test_usuario_pode_mudar_para_qualquer_outro_status(): void
     {
         $user = User::factory()->create();
         $operacao = $this->criarOperacao('DIGITANDO', $user);
 
         $response = $this->actingAs($user)->from(route('operacoes.show', $operacao))->patch(route('operacoes.update-status', $operacao), [
-            'status' => 'PAGA',
+            'status' => 'PAGO AO CLIENTE',
         ]);
 
         $response->assertRedirect(route('operacoes.show', $operacao));
-        $response->assertSessionHasErrors('status');
+        $response->assertSessionHas('status');
 
         $this->assertDatabaseHas('operacoes', [
             'id' => $operacao->id,
-            'status' => 'DIGITANDO',
+            'status' => 'PAGO AO CLIENTE',
         ]);
 
-        $this->assertDatabaseMissing('historico_status', [
+        $this->assertDatabaseHas('historico_status', [
             'operacao_id' => $operacao->id,
-            'status_novo' => 'PAGA',
+            'status_novo' => 'PAGO AO CLIENTE',
         ]);
     }
 
