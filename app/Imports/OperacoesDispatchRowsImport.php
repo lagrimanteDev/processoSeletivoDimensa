@@ -2,16 +2,18 @@
 
 namespace App\Imports;
 
-use App\Jobs\ImportOperacaoLinhaJob;
+use App\Jobs\ImportOperacaoLoteJob;
 use App\Models\ImportacaoLinhaLog;
 use Illuminate\Support\Facades\Cache;
 use Maatwebsite\Excel\Concerns\OnEachRow;
 use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
+use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Row;
+use Maatwebsite\Excel\Events\AfterImport;
 
-class OperacoesDispatchRowsImport implements OnEachRow, WithHeadingRow, WithChunkReading, SkipsEmptyRows
+class OperacoesDispatchRowsImport implements OnEachRow, WithHeadingRow, WithChunkReading, SkipsEmptyRows, WithEvents
 {
     public function __construct(
         private readonly ?int $userId = null,
@@ -21,6 +23,13 @@ class OperacoesDispatchRowsImport implements OnEachRow, WithHeadingRow, WithChun
     }
 
     public int $dispatched = 0;
+
+    /**
+     * @var array<int, array{row_data: array<string, mixed>, line: int, log_id: int}>
+     */
+    private array $pendingRows = [];
+
+    private int $batchDispatchSize = 500;
 
     public function onRow(Row $row): void
     {
@@ -47,20 +56,49 @@ class OperacoesDispatchRowsImport implements OnEachRow, WithHeadingRow, WithChun
             'mensagem' => 'Linha enfileirada para processamento.',
         ]);
 
-        ImportOperacaoLinhaJob::dispatch(
-            $rowData,
-            $row->getIndex(),
-            $this->userId,
-            $this->isAdmin,
-            $log->id,
-        )->onConnection('database');
+        $this->pendingRows[] = [
+            'row_data' => $rowData,
+            'line' => $row->getIndex(),
+            'log_id' => (int) $log->id,
+        ];
 
-        $this->dispatched++;
+        if (count($this->pendingRows) >= $this->batchDispatchSize) {
+            $this->dispatchPendingBatch();
+        }
     }
 
     public function chunkSize(): int
     {
         return 500;
+    }
+
+    /**
+     * @return array<string, callable>
+     */
+    public function registerEvents(): array
+    {
+        return [
+            AfterImport::class => function (): void {
+                $this->dispatchPendingBatch();
+            },
+        ];
+    }
+
+    private function dispatchPendingBatch(): void
+    {
+        if ($this->pendingRows === []) {
+            return;
+        }
+
+        ImportOperacaoLoteJob::dispatch(
+            $this->pendingRows,
+            $this->userId,
+            $this->isAdmin,
+            $this->filePath,
+        )->onConnection('database');
+
+        $this->dispatched += count($this->pendingRows);
+        $this->pendingRows = [];
     }
 
     private function isImportCancelled(): bool

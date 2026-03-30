@@ -84,7 +84,7 @@ composer run dev
 ```
 
 Acesse: `http://127.0.0.1:8000`  
-Login: `test@example.com` / `password`
+Não há usuário padrão. Faça seu cadastro em `http://127.0.0.1:8000/register`.
 
 ✅ **Pronto: no final, agora é só importar o arquivo na tela de operações.**
 
@@ -205,7 +205,9 @@ php artisan db:seed
 
 Isso cria:
 - **conveniadas** padrão (Conveniada 1 a 10)
-- **usuário de teste:** `test@example.com` / senha: `password`
+- **não cria usuário padrão**
+
+Após subir o projeto, acesse `/register` e crie seu próprio usuário.
 
 ### Passo 9 — gerar assets de produção
 
@@ -270,9 +272,9 @@ npm run dev
 | Alterar status | `PATCH /operacoes/{id}/status` |
 | Gerar relatório | `GET /operacoes/relatorio` |
 
-**Credenciais de teste:**
-- Email: `test@example.com`
-- Senha: `password`
+**Autenticação:**
+- Não há credenciais padrão.
+- Cadastre um usuário em `GET /register`.
 
 ---
 
@@ -475,7 +477,7 @@ npm run dev
 - [ ] `npm run build`
 - [ ] `composer run dev`
 - [ ] Acessar `http://127.0.0.1:8000`
-- [ ] Login com `test@example.com` / `password`
+- [ ] Cadastrar usuário em `http://127.0.0.1:8000/register`
 - [ ] Importar o arquivo na tela de operações (`/operacoes`)
 
 ---

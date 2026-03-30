@@ -383,7 +383,8 @@ class OperacaoController extends Controller
         $jobsPending = DB::table('jobs')
             ->where(function ($query): void {
                 $query->where('payload', 'like', '%ImportOperacoesJob%')
-                    ->orWhere('payload', 'like', '%ImportOperacaoLinhaJob%');
+                    ->orWhere('payload', 'like', '%ImportOperacaoLinhaJob%')
+                    ->orWhere('payload', 'like', '%ImportOperacaoLoteJob%');
             })
             ->count();
 
@@ -465,7 +466,8 @@ class OperacaoController extends Controller
 
         $jobsPending = DB::table('jobs')
             ->where(function ($query): void {
-                $query->where('payload', 'like', '%ImportOperacaoLinhaJob%');
+                $query->where('payload', 'like', '%ImportOperacaoLinhaJob%')
+                    ->orWhere('payload', 'like', '%ImportOperacaoLoteJob%');
             })
             ->count();
 
