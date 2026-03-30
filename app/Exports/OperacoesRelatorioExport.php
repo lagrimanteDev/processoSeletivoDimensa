@@ -75,27 +75,49 @@ class OperacoesRelatorioExport implements FromCollection, WithHeadings, WithMapp
             return 0.0;
         }
 
-        $taxaMensal = max((float) ($operacao->taxa_juros ?? 0), 0) / 100;
-
-        if ($taxaMensal <= 0) {
-            return $valorOperacao;
-        }
-
         $exportDate = CarbonImmutable::parse($this->exportDate)->startOfDay();
 
-        if (! $operacao->data_pagamento) {
+        $taxaMulta = max((float) ($operacao->taxa_multa ?? 0), 0) / 100;
+        $taxaMora = max((float) ($operacao->taxa_mora ?? 0), 0) / 100;
+        $taxaOperacao = max((float) ($operacao->taxa_juros ?? 0), 0) / 100;
+
+        $parcelas = $operacao->parcelas;
+
+        if ($parcelas->isEmpty()) {
             return $valorOperacao;
         }
 
-        $paymentDate = CarbonImmutable::parse($operacao->data_pagamento)->startOfDay();
-        $diasAtePagamento = $exportDate->diffInDays($paymentDate, false);
+        $valorPresenteTotal = 0.0;
 
-        if ($diasAtePagamento <= 0) {
-            return $valorOperacao;
+        foreach ($parcelas as $parcela) {
+            $valorParcela = (float) ($parcela->valor ?? 0);
+
+            if ($valorParcela <= 0 || ! $parcela->data_vencimento) {
+                $valorPresenteTotal += $valorParcela;
+
+                continue;
+            }
+
+            $vencimento = CarbonImmutable::parse($parcela->data_vencimento)->startOfDay();
+
+            if ($exportDate->greaterThan($vencimento)) {
+                $diasAtraso = $vencimento->diffInDays($exportDate);
+
+                $valorPresenteParcela = $valorParcela
+                    + ($valorParcela * $taxaMulta)
+                    + ($valorParcela * ($taxaMora / 30) * $diasAtraso);
+            } elseif ($exportDate->lessThan($vencimento)) {
+                $diasAdiantamento = $exportDate->diffInDays($vencimento);
+
+                $valorPresenteParcela = $valorParcela
+                    - ($valorParcela * ($taxaOperacao / 30) * $diasAdiantamento);
+            } else {
+                $valorPresenteParcela = $valorParcela;
+            }
+
+            $valorPresenteTotal += max($valorPresenteParcela, 0);
         }
 
-        $fatorDesconto = pow(1 + $taxaMensal, $diasAtePagamento / 30);
-
-        return $valorOperacao / $fatorDesconto;
+        return $valorPresenteTotal;
     }
 }

@@ -50,6 +50,9 @@ class OperacaoController extends Controller
         $exportDate = CarbonImmutable::now();
 
         $operacoes = $this->buildOperacoesListQuery($request)
+            ->with([
+                'parcelas:id,operacao_id,data_vencimento,valor',
+            ])
             ->orderBy('id')
             ->get();
 
@@ -255,6 +258,8 @@ class OperacaoController extends Controller
                 'valor_requerido',
                 'valor_desembolso',
                 'taxa_juros',
+                'taxa_multa',
+                'taxa_mora',
                 'data_pagamento',
                 'status',
                 'produto',
