@@ -6,7 +6,8 @@ Aplicação Laravel para gestão de operações financeiras, com:
 - importação de planilhas (`.xlsx`, `.xls`, `.csv`) em background;
 - listagem, detalhe e atualização de status de operações;
 - histórico de mudança de status;
-- geração de relatório com cálculo de valor presente.
+- geração de relatório com cálculo de valor presente;
+- filtros avançados por código, cliente, produto, conveniada e status.
 
 ---
 
@@ -14,12 +15,12 @@ Aplicação Laravel para gestão de operações financeiras, com:
 
 Antes de rodar o projeto, garanta que você tem:
 
-- PHP 8.2+
-- Composer
-- Node.js 18+ e npm
-- Banco de dados (SQLite ou MySQL)
+- **PHP 8.2+** com extensões: `openssl`, `pdo`, `pdo_mysql` ou `pdo_sqlite`
+- **Composer** (PHP dependency manager)
+- **Node.js 18+** e **npm**
+- **Banco de dados:** MySQL 5.7+ (recomendado) ou SQLite
 
-> Observação: o projeto usa fila em banco (`QUEUE_CONNECTION=database`) e sessão/cache em banco. Por isso, o banco precisa estar disponível durante a execução.
+> **Observação importante:** o projeto usa fila em banco (`QUEUE_CONNECTION=database`) e sessão/cache em banco. Por isso, o banco precisa estar disponível e acessível durante toda a execução.
 
 ---
 
@@ -63,27 +64,11 @@ Copy-Item .env.example .env
 php artisan key:generate
 ```
 
-### Passo 6 — configurar banco no arquivo .env
+### Passo 6 — configurar banco no arquivo `.env`
 
-Você pode usar **SQLite** (mais rápido para iniciar) ou **MySQL**.
+#### 🟢 Opção A: MySQL (recomendado)
 
-#### Opção A: SQLite (recomendado para desenvolvimento rápido)
-
-No `.env`:
-
-```dotenv
-DB_CONNECTION=sqlite
-```
-
-Crie o arquivo caso não exista:
-
-```bash
-php -r "file_exists('database/database.sqlite') || touch('database/database.sqlite');"
-```
-
-#### Opção B: MySQL
-
-No `.env`:
+**Edite o arquivo `.env`:**
 
 ```dotenv
 DB_CONNECTION=mysql
@@ -94,7 +79,33 @@ DB_USERNAME=root
 DB_PASSWORD=
 ```
 
-> Se no seu ambiente o MySQL estiver em outra porta (ex.: 3307), ajuste `DB_PORT`.
+**Importante:** Se seu MySQL está em outra porta (ex.: XAMPP usa 3307 por padrão), ajuste `DB_PORT`:
+
+```dotenv
+DB_PORT=3307
+```
+
+**Crie o banco de dados** (se não existir):
+
+```bash
+mysql -u root -P 3306 -e "CREATE DATABASE processo_seletivo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+```
+
+> Se usar porta 3307: `mysql -u root -P 3307 -e "..."`
+
+#### 🔵 Opção B: SQLite (mais rápido para testes)
+
+**Edite o arquivo `.env`:**
+
+```dotenv
+DB_CONNECTION=sqlite
+```
+
+**Crie o arquivo de banco:**
+
+```bash
+php -r "file_exists('database/database.sqlite') || touch('database/database.sqlite');"
+```
 
 ### Passo 7 — rodar migrations
 
@@ -102,217 +113,308 @@ DB_PASSWORD=
 php artisan migrate
 ```
 
-### Passo 8 — popular dados iniciais (opcional)
+Se houver erro de conexão, valide:
+- O banco está iniciado?
+- As credenciais no `.env` estão corretas?
+- A porta está acessível?
+
+### Passo 8 — popular dados iniciais (recomendado)
 
 ```bash
 php artisan db:seed
 ```
 
 Isso cria:
+- **conveniadas** padrão (Conveniada 1 a 10)
+- **usuário de teste:** `test@example.com` / senha: `password`
 
-- conveniadas padrão;
-- usuário de teste: `test@example.com` (senha padrão da factory: `password`).
-
-### Passo 9 — gerar assets de produção (evita erro de manifest)
+### Passo 9 — gerar assets de produção
 
 ```bash
 npm run build
 ```
 
+Isso evita erro de `manifest.json` não encontrado.
+
 ---
 
 ## 3) Como rodar o projeto no dia a dia
 
-Você pode usar modo unificado ou manual.
-
-### Opção 1 — comando único (recomendado)
+### ✅ Opção 1 — Comando único (RECOMENDADO)
 
 ```bash
 composer run dev
 ```
 
-Esse comando sobe ao mesmo tempo:
+Esse comando sobe automaticamente:
 
-- servidor Laravel (`php artisan serve`);
-- worker da fila (`php artisan queue:listen`);
-- logs (`php artisan pail`);
-- Vite em modo desenvolvimento (`npm run dev`).
+- Servidor Laravel na porta **8000** (`http://127.0.0.1:8000`)
+- Worker da fila em background
+- Logs em tempo real
+- Vite (frontend build) na porta **5174**
 
-### Opção 2 — manual (3 terminais)
+**Aguarde ~5 segundos** para o servidor iniciar completamente.
 
-Terminal 1 (aplicação):
+### Opção 2 — Manual (3-4 terminais separados)
 
+**Terminal 1 - Servidor Laravel:**
 ```bash
 php artisan serve
 ```
 
-Terminal 2 (fila):
-
+**Terminal 2 - Worker da fila:**
 ```bash
 php artisan queue:work --queue=default --timeout=0 --tries=1
 ```
 
-Terminal 3 (front-end, opcional em dev):
+**Terminal 3 - Logs em tempo real:**
+```bash
+php artisan pail
+```
 
+**Terminal 4 - Frontend (opcional, apenas se modificar CSS/JS):**
 ```bash
 npm run dev
 ```
-
-Se não quiser `npm run dev`, rode `npm run build` após alterações de front.
 
 ---
 
 ## 4) Acesso e rotas principais
 
-- Login: `GET /login`
-- Dashboard: `GET /dashboard`
-- Lista de operações: `GET /operacoes`
-- Detalhe da operação: `GET /operacoes/{operacao}`
-- Importação: `POST /operacoes/importar`
-- Alteração de status: `PATCH /operacoes/{operacao}/status`
-- Relatório em Excel: `GET /operacoes/relatorio`
+| Descrição | URL |
+|-----------|-----|
+| Login | `GET /login` |
+| Dashboard | `GET /dashboard` |
+| Lista de operações | `GET /operacoes` |
+| Detalhe da operação | `GET /operacoes/{id}` |
+| Importar planilha | `POST /operacoes/importar` |
+| Alterar status | `PATCH /operacoes/{id}/status` |
+| Gerar relatório | `GET /operacoes/relatorio` |
+
+**Credenciais de teste:**
+- Email: `test@example.com`
+- Senha: `password`
 
 ---
 
 ## 5) Importação de planilha
 
-A importação é assíncrona e depende da fila.
+### Fluxo
 
-Fluxo:
+1. Acesse: `GET /operacoes`
+2. Escolha um arquivo (`.xlsx`, `.xls` ou `.csv`)
+3. Clique em "Importar"
+4. O sistema processa em background
+5. Acompanhe o progresso na tela
 
-1. usuário envia arquivo;
-2. sistema registra as linhas para processamento;
-3. jobs são executados em background;
-4. status das linhas pode ser acompanhado na tela de operações.
+### Regras de Importação
 
-Cabeçalhos aceitos (principais):
+#### Colunas Obrigatórias
 
-- `valor_requerido`
-- `valor_desembolso`
-- `total_juros`
-- `taxa_juros` / `taxa_juros_%`
-- `taxa_multa`
-- `taxa_mora`
-- `status_id`
-- `data_criacao`
-- `data_pagamento`
-- `produto`
-- `conveniada_id`
-- `quantidade_parcelas`
-- `data_primeiro_vencimento`
-- `valor_parcela`
-- `quantidade_parcelas_pagas`
-- `cpf`
-- `nome`
-- `dt_nasc`
-- `sexo`
-- `email`
+- `cpf` ou `cliente_cpf` ou variações (ex: `documento`)
+- `valor_requerido` (valor solicitado)
 
-Também existem aliases para compatibilidade de layout.
+#### Colunas Opcionais
 
----
+- `nome_cliente` / `cliente_nome` — nome do cliente
+- `data_nascimento` — data de nascimento do cliente
+- `email` / `cliente_email` — email
+- `valor_desembolso` — valor desembolsado
+- `total_juros` — total de juros
+- `taxa_juros` / `taxa_juros_%` — taxa em percentual
+- `taxa_multa` — taxa de multa
+- `taxa_mora` — taxa de mora
+- `status` / `status_id` — status inicial
+- `data_criacao` — data de criação
+- `data_pagamento` — data de pagamento
+- **`produto`** — tipo de produto (CONSIGNADO, NAO_CONSIGNADO, etc)
+- **`conveniada_id`** ou `codigo_conveniada` — ID ou código da conveniada
+- `quantidade_parcelas` — quantidade de parcelas
+- `data_primeiro_vencimento` — vencimento da primeira parcela
+- `valor_parcela` — valor de cada parcela
+- `quantidade_parcelas_pagas` — parcelas já pagas
 
-## 6) Regras de status
+#### Regras de Produto e Conveniada
 
-Status possíveis:
+| Produto | Conveniada | Comportamento |
+|---------|-----------|---|
+| `CONSIGNADO` | Obrigatória | Falha se não encontrada |
+| `NAO_CONSIGNADO` | Pode ser vazia | Importa normalmente, conveniada_id fica NULL |
+| Outros | Obrigatória | Falha se não encontrada |
 
-- `DIGITANDO`
-- `PRÉ-ANÁLISE`
-- `EM ANÁLISE`
-- `PARA ASSINATURA`
-- `ASSINATURA CONCLUÍDA`
-- `APROVADA`
-- `PAGO AO CLIENTE`
-- `CANCELADA`
-
-Regras importantes:
-
-- toda alteração válida gera histórico em `historico_status`;
-- ao mudar para `PAGO AO CLIENTE`, `data_pagamento` é atualizada automaticamente;
-- `PAGO AO CLIENTE` só é permitido se a operação:
-	- estiver em `APROVADA`;
-	- já tiver passado por `ASSINATURA CONCLUÍDA` no histórico.
+> **Nota:** O CPF é **sempre preservado** do arquivo original (sem normalização).
 
 ---
 
-## 7) Regra do Valor Presente no relatório
+## 6) Filtros de Busca
 
-O valor presente é calculado por parcela e somado no relatório.
+Na listagem de operações, você pode filtrar por:
 
-Legenda:
+- **Código** — prefixo do código da operação
+- **Cliente** — nome ou CPF do cliente (busca com LIKE)
+- **Produto** — CONSIGNADO ou NAO_CONSIGNADO
+- **Conveniada** — nome da conveniada
+- **Status** — um dos 8 status possíveis
 
-- VP = Valor Presente
-- V = Valor da Parcela
-- m = Multa
-- j = Juros de Mora
-- i = Taxa da Operação
-- d = Dias (atraso/adiantamento)
-
-Fórmulas:
-
-- Atraso:
-	- `VP = V + (V * m) + (V * (j/30) * d)`
-- Adiantamento:
-	- `VP = V - (V * (i/30) * d)`
+**Comportamento especial:** Se você selecionar `produto = NAO_CONSIGNADO`, o filtro de conveniada é **automaticamente ignorado**, retornando todos os registros com esse produto.
 
 ---
 
-## 8) Comandos úteis
+## 7) Regras de Status
 
-Limpar cache/config/rotas/views:
+| Status | Descrição |
+|--------|-----------|
+| `DIGITANDO` | Digitação/preenchimento em andamento |
+| `PRÉ-ANÁLISE` | Aguardando análise |
+| `EM ANÁLISE` | Sendo analisada |
+| `PARA ASSINATURA` | Pronta para assinatura |
+| `ASSINATURA CONCLUÍDA` | Assinada (pré-requisito para pagamento) |
+| `APROVADA` | Aprovada |
+| `PAGO AO CLIENTE` | Pagamento realizado |
+| `CANCELADA` | Cancelada (final, não pode ser alterada) |
+
+### Regras de Transição
+
+- Toda alteração de status gera registro em `historico_status`
+- `PAGO AO CLIENTE` só é permitido se:
+  - Status atual for `APROVADA`
+  - A operação já passou por `ASSINATURA CONCLUÍDA` antes
+- Ao marcar como `PAGO AO CLIENTE`, `data_pagamento` é atualizada automaticamente
+- `CANCELADA` não pode ser alterada (status final)
+
+---
+
+## 8) Valor Presente (Relatório)
+
+O relatório calcula o **Valor Presente** de cada parcela baseado em:
+
+- **Atraso:** `VP = V + (V × m) + (V × (j/30) × d)`
+- **Adiantamento:** `VP = V - (V × (i/30) × d)`
+
+Onde:
+- `V` = Valor da parcela
+- `m` = Taxa de multa
+- `j` = Taxa de mora (juros)
+- `i` = Taxa da operação
+- `d` = Dias de atraso (negativo = adiantado)
+
+---
+
+## 9) Comandos Úteis
 
 ```bash
+# Limpar todos os caches
 php artisan optimize:clear
-```
 
-Ver jobs com falha:
-
-```bash
+# Ver jobs que falharam
 php artisan queue:failed
-```
 
-Reprocessar jobs com falha:
-
-```bash
+# Reprocessar jobs falhados
 php artisan queue:retry all
-```
 
-Executar testes:
-
-```bash
+# Executar testes
 php artisan test
+
+# Ver status das migrations
+php artisan migrate:status
+
+# Reverter última migration
+php artisan migrate:rollback
 ```
 
 ---
 
-## 9) Troubleshooting (erros comuns)
+## 10) Troubleshooting (Problemas Comuns)
 
-### Erro de banco (conexão recusada / access denied)
+### ❌ "SQLSTATE[HY000]: General error: 1030 Got error..."
 
-- valide `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` no `.env`;
-- confirme que o serviço do banco está iniciado;
-- rode `php artisan migrate:status` para validar conexão.
+**Causa:** Banco de dados corrompido ou problema de conexão.
 
-### Importação não anda (fica processando)
+**Solução:**
+```bash
+# No MySQL, reconecte:
+php artisan migrate:refresh --seed
+```
 
-- confirme se há worker rodando (`queue:work` ou `composer run dev`);
-- verifique `php artisan queue:failed`;
-- verifique logs em `storage/logs/laravel.log`.
+### ❌ "Module 'openssl' already loaded in php.ini"
 
-### Erro de Vite/manifest
+**Causa:** OpenSSL carregado duas vezes no `php.ini`.
 
-- rode `npm run build`;
-- depois rode `php artisan optimize:clear`.
+**Solução:**
+- Abra `php.ini`
+- Procure por `extension=openssl` e `extension=php_openssl.dll`
+- Comente uma delas (adicione `;` no início)
+- Reinicie o servidor
+
+### ❌ "Call to undefined function pcntl_signal (php artisan pail)"
+
+**Causa:** Extensão `pcntl` não disponível no Windows.
+
+**Solução:**
+- A aplicação já tem um workaround: `scripts/pail-or-sleep.php`
+- Use `composer run dev` que funciona automaticamente
+
+### ❌ "Importação não progride (fica em 'processing')"
+
+**Verificação:**
+1. Verifique se há worker rodando: `composer run dev` deve estar ativo
+2. Cheque jobs pendentes: `php artisan queue:failed`
+3. Verifique logs: `storage/logs/laravel.log`
+4. Se houver muitos jobs, limpe e recomeçe:
+   ```bash
+   php artisan queue:flush
+   php artisan db:seed  # Recria dados de teste
+   ```
+
+### ❌ "CORS error ao acessar a aplicação"
+
+**Solução:**
+- Acesse exatamente: `http://127.0.0.1:8000` (não `localhost`)
+- Certifique-se de que `APP_URL=http://localhost` está no `.env`
+
+### ❌ "npm run dev falha com 'EACCES' ou permission denied"
+
+**Solução (Windows):**
+```bash
+npm install -g npm
+npm cache clean --force
+npm install
+npm run dev
+```
 
 ---
 
-## 10) Resumo rápido (checklist)
+## 11) Resumo Rápido (Checklist)
 
-1. `composer install`
-2. `npm install`
-3. copiar `.env` e gerar chave
-4. configurar banco
-5. `php artisan migrate`
-6. `php artisan db:seed` (opcional)
-7. `npm run build`
-8. `composer run dev` (ou subir manualmente app + fila + vite)
+- [ ] `composer install`
+- [ ] `npm install`
+- [ ] `Copy-Item .env.example .env` (Windows) ou `cp .env.example .env` (Linux/Mac)
+- [ ] `php artisan key:generate`
+- [ ] Editar `.env` com credenciais de banco
+- [ ] `php artisan migrate`
+- [ ] `php artisan db:seed`
+- [ ] `npm run build`
+- [ ] `composer run dev`
+- [ ] Acessar `http://127.0.0.1:8000`
+- [ ] Login com `test@example.com` / `password`
+
+---
+
+## 12) Estrutura de Pastas Principais
+
+```
+app/
+  ├── Http/Controllers/OperacaoController.php  (lógica de listagem e filtros)
+  ├── Imports/OperacoesImport.php             (importação de planilhas)
+  ├── Models/                                  (Operacao, Cliente, Conveniada, etc)
+  └── Jobs/                                    (jobs assíncronos de importação)
+
+resources/views/operacoes/
+  ├── index.blade.php    (listagem com filtros)
+  ├── show.blade.php     (detalhe e histórico)
+  └── edit.blade.php     (alteração de status)
+
+database/
+  ├── migrations/        (schemas das tabelas)
+  └── seeders/           (dados iniciais)
+```
