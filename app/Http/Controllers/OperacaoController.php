@@ -387,6 +387,9 @@ class OperacaoController extends Controller
             })
             ->count();
 
+        // Detectar se a importação está travada e reiniciar se necessário
+        $this->detectAndRestartStuckedImport($latestFile);
+
         if ($latestFile && $jobsPending === 0) {
             ImportacaoLinhaLog::query()
                 ->where('arquivo', $latestFile)
@@ -442,5 +445,51 @@ class OperacaoController extends Controller
     private function buildImportCancelCacheKey(string $filePath): string
     {
         return 'importacao:cancelada:'.md5($filePath);
+    }
+
+    private function detectAndRestartStuckedImport(?string $latestFile): void
+    {
+        if (! $latestFile) {
+            return;
+        }
+
+        $queued = ImportacaoLinhaLog::query()
+            ->where('arquivo', $latestFile)
+            ->where('status', 'queued')
+            ->count();
+
+        $processing = ImportacaoLinhaLog::query()
+            ->where('arquivo', $latestFile)
+            ->where('status', 'processing')
+            ->count();
+
+        $jobsPending = DB::table('jobs')
+            ->where(function ($query): void {
+                $query->where('payload', 'like', '%ImportOperacaoLinhaJob%');
+            })
+            ->count();
+
+        // Se há jobs ou linhas enfileiradas mas NENHUMA em processamento por mais de 30s
+        if (($queued > 0 || $jobsPending > 0) && $processing === 0) {
+            $lastUpdate = ImportacaoLinhaLog::query()
+                ->where('arquivo', $latestFile)
+                ->whereIn('status', ['queued', 'processing'])
+                ->latest('updated_at')
+                ->value('updated_at');
+
+            $stuckSince = $lastUpdate ? now()->diffInSeconds($lastUpdate) : 0;
+
+            // Se travado por mais de 30 segundos, reiniciar
+            if ($stuckSince > 30) {
+                $cacheKey = 'import:restart:'.md5($latestFile);
+
+                if (! Cache::get($cacheKey)) {
+                    Cache::put($cacheKey, true, now()->addMinutes(5));
+
+                    $queueName = (string) config('queue.connections.database.queue', 'default');
+                    $this->startQueueWorkerInBackground($queueName);
+                }
+            }
+        }
     }
 }
