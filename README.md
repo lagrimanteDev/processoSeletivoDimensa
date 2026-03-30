@@ -13,24 +13,39 @@ Aplicação Laravel para gestão de operações financeiras, com:
 
 ## ⚡ QUICK START (Máquina Nova)
 
-Você está em uma máquina sem o projeto rodando? Execute esses 9 passos em sequência:
+Se você está começando do zero, siga este fluxo:
+
+### 1) Entrar na pasta
 
 ```bash
-# 1. Entre na pasta
 cd processoSeletivo
+```
 
-# 2-3. Instale dependências
+### 2) Instalar dependências
+
+```bash
 composer install
 npm install
+```
 
-# 4-5. Configure o ambiente
-Copy-Item .env.example .env  # Windows
-# OU: cp .env.example .env   # Linux/Mac
+### 3) Criar `.env` e gerar chave
+
+Windows (PowerShell):
+
+```powershell
+Copy-Item .env.example .env
 php artisan key:generate
+```
 
-# 6. Configure a sua .env
+Linux/macOS:
 
-# Edite .env e configure:
+```bash
+cp .env.example .env
+php artisan key:generate
+```
+
+### 4) Configurar banco no `.env`
+
 ```dotenv
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
@@ -54,16 +69,24 @@ DB_PASSWORD=
 # 7-8. Crie banco e dados
 php artisan migrate
 php artisan db:seed
+```
 
-# 9. Gere assets
+### 6) Gerar assets
+
+```bash
 npm run build
+```
 
-# 10. EXECUTE!
+### 7) Subir aplicação
+
+```bash
 composer run dev
 ```
 
 Acesse: `http://127.0.0.1:8000`  
 Login: `test@example.com` / `password`
+
+✅ **Pronto: no final, agora é só importar o arquivo na tela de operações.**
 
 ---
 
@@ -453,6 +476,7 @@ npm run dev
 - [ ] `composer run dev`
 - [ ] Acessar `http://127.0.0.1:8000`
 - [ ] Login com `test@example.com` / `password`
+- [ ] Importar o arquivo na tela de operações (`/operacoes`)
 
 ---
 
