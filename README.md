@@ -125,7 +125,7 @@ npm run build
 
 Você pode usar modo unificado ou manual.
 
-## Opção 1 — comando único (recomendado)
+### Opção 1 — comando único (recomendado)
 
 ```bash
 composer run dev
@@ -138,7 +138,7 @@ Esse comando sobe ao mesmo tempo:
 - logs (`php artisan pail`);
 - Vite em modo desenvolvimento (`npm run dev`).
 
-## Opção 2 — manual (3 terminais)
+### Opção 2 — manual (3 terminais)
 
 Terminal 1 (aplicação):
 
