@@ -15,7 +15,7 @@ class ImportOperacaoLoteJob implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 1800;
+    public int $timeout = 600;
 
     /**
      * @param array<int, array{row_data: array<string, mixed>, line: int, log_id: int}> $rows

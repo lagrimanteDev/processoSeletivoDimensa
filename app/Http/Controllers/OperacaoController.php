@@ -471,26 +471,36 @@ class OperacaoController extends Controller
             })
             ->count();
 
-        // Se há jobs ou linhas enfileiradas mas NENHUMA em processamento por mais de 30s
-        if (($queued > 0 || $jobsPending > 0) && $processing === 0) {
-            $lastUpdate = ImportacaoLinhaLog::query()
-                ->where('arquivo', $latestFile)
-                ->whereIn('status', ['queued', 'processing'])
-                ->latest('updated_at')
-                ->value('updated_at');
+        $lastQueuedOrProcessingUpdate = ImportacaoLinhaLog::query()
+            ->where('arquivo', $latestFile)
+            ->whereIn('status', ['queued', 'processing'])
+            ->latest('updated_at')
+            ->value('updated_at');
 
-            $stuckSince = $lastUpdate ? now()->diffInSeconds($lastUpdate) : 0;
+        $lastProcessingUpdate = ImportacaoLinhaLog::query()
+            ->where('arquivo', $latestFile)
+            ->where('status', 'processing')
+            ->latest('updated_at')
+            ->value('updated_at');
 
-            // Se travado por mais de 30 segundos, reiniciar
-            if ($stuckSince > 30) {
-                $cacheKey = 'import:restart:'.md5($latestFile);
+        $stuckWithoutProcessing = ($queued > 0 || $jobsPending > 0)
+            && $processing === 0
+            && $lastQueuedOrProcessingUpdate
+            && now()->diffInSeconds($lastQueuedOrProcessingUpdate) > 30;
 
-                if (! Cache::get($cacheKey)) {
-                    Cache::put($cacheKey, true, now()->addMinutes(5));
+        $stuckWithStaleProcessing = ($queued > 0 || $jobsPending > 0)
+            && $processing > 0
+            && $lastProcessingUpdate
+            && now()->diffInSeconds($lastProcessingUpdate) > 120;
 
-                    $queueName = (string) config('queue.connections.database.queue', 'default');
-                    $this->startQueueWorkerInBackground($queueName);
-                }
+        if ($stuckWithoutProcessing || $stuckWithStaleProcessing) {
+            $cacheKey = 'import:restart:'.md5($latestFile);
+
+            if (! Cache::get($cacheKey)) {
+                Cache::put($cacheKey, true, now()->addMinutes(5));
+
+                $queueName = (string) config('queue.connections.database.queue', 'default');
+                $this->startQueueWorkerInBackground($queueName);
             }
         }
     }

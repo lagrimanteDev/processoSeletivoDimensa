@@ -29,7 +29,7 @@ class OperacoesDispatchRowsImport implements OnEachRow, WithHeadingRow, WithChun
      */
     private array $pendingRows = [];
 
-    private int $batchDispatchSize = 500;
+    private int $batchDispatchSize = 100;
 
     public function onRow(Row $row): void
     {
@@ -69,7 +69,7 @@ class OperacoesDispatchRowsImport implements OnEachRow, WithHeadingRow, WithChun
 
     public function chunkSize(): int
     {
-        return 500;
+        return 100;
     }
 
     /**
