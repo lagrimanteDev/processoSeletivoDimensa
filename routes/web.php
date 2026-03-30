@@ -18,6 +18,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/operacoes/relatorio', [OperacaoController::class, 'report'])->name('operacoes.report');
     Route::get('/operacoes/{operacao}', [OperacaoController::class, 'show'])->name('operacoes.show');
     Route::post('/operacoes/importar', [OperacaoController::class, 'import'])->name('operacoes.import');
+    Route::post('/operacoes/importar/cancelar', [OperacaoController::class, 'cancelImport'])->name('operacoes.cancel-import');
     Route::patch('/operacoes/{operacao}/status', [OperacaoController::class, 'updateStatus'])->name('operacoes.update-status');
 
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

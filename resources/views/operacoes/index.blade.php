@@ -27,11 +27,25 @@
 
 			<div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
 				<h3 class="text-lg font-medium text-gray-900 mb-4">Importar planilha</h3>
-				<form id="import-form" action="{{ route('operacoes.import') }}" method="POST" enctype="multipart/form-data" class="flex items-center gap-3">
-					@csrf
-					<input type="file" name="arquivo" accept=".xlsx,.xls,.csv" class="border-gray-300 rounded-md shadow-sm" required>
-					<x-primary-button id="import-button">Importar</x-primary-button>
-				</form>
+				<div class="flex flex-wrap items-center gap-3">
+					<form id="import-form" action="{{ route('operacoes.import') }}" method="POST" enctype="multipart/form-data" class="flex items-center gap-3">
+						@csrf
+						<input type="file" name="arquivo" accept=".xlsx,.xls,.csv" class="border-gray-300 rounded-md shadow-sm" required>
+						<x-primary-button id="import-button">Importar</x-primary-button>
+					</form>
+
+					<form id="cancel-import-form" action="{{ route('operacoes.cancel-import') }}" method="POST" class="inline-flex">
+						@csrf
+						<button
+							type="submit"
+							id="cancel-import-button"
+							class="inline-flex items-center px-4 py-2 bg-red-50 border border-red-300 rounded-md font-semibold text-xs text-red-700 uppercase tracking-widest hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2 transition ease-in-out duration-150 disabled:opacity-50"
+							{{ $importStats['is_running'] ? '' : 'disabled' }}
+						>
+							Cancelar importação
+						</button>
+					</form>
+				</div>
 				<p id="import-warning" class="hidden mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
 					Importação iniciada. Este processo pode levar alguns minutos.
 				</p>
@@ -209,8 +223,10 @@
 	<script>
 		document.addEventListener('DOMContentLoaded', function () {
 			const form = document.getElementById('import-form');
+			const cancelForm = document.getElementById('cancel-import-form');
 			const warning = document.getElementById('import-warning');
 			const button = document.getElementById('import-button');
+			const cancelButton = document.getElementById('cancel-import-button');
 			const statsUrl = '{{ route('operacoes.import-stats') }}';
 
 			if (!form || !warning || !button) {
@@ -222,6 +238,20 @@
 				button.disabled = true;
 				button.textContent = 'Importando...';
 			});
+
+			if (cancelForm && cancelButton) {
+				cancelForm.addEventListener('submit', function (event) {
+					const ok = window.confirm('Deseja realmente cancelar a importação em andamento?');
+
+					if (!ok) {
+						event.preventDefault();
+						return;
+					}
+
+					cancelButton.disabled = true;
+					cancelButton.textContent = 'Cancelando...';
+				});
+			}
 
 			const statusBadge = document.getElementById('import-status-badge');
 			const latestFile = document.getElementById('import-latest-file');
@@ -255,6 +285,24 @@
 
 				statusBadge.classList.add('bg-green-100', 'text-green-800');
 				statusBadge.textContent = 'Sem processamento em andamento';
+
+				if (cancelButton) {
+					cancelButton.disabled = true;
+					cancelButton.textContent = 'Cancelar importação';
+				}
+			}
+
+			function applyCancelButtonState(data) {
+				if (!cancelButton) return;
+
+				if (data.is_running) {
+					cancelButton.disabled = false;
+					cancelButton.textContent = 'Cancelar importação';
+					return;
+				}
+
+				cancelButton.disabled = true;
+				cancelButton.textContent = 'Cancelar importação';
 			}
 
 			function applyErrors(data) {
@@ -300,6 +348,7 @@
 						if (errorEl) errorEl.textContent = data.error;
 
 						applyStatusBadge(data);
+						applyCancelButtonState(data);
 						applyErrors(data);
 					});
 			}

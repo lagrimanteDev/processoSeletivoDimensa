@@ -6,6 +6,7 @@ use App\Imports\OperacoesImport;
 use App\Models\ImportacaoLinhaLog;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -33,6 +34,18 @@ class ImportOperacaoLinhaJob implements ShouldQueue
     public function handle(): void
     {
         $logRow = $this->logId ? ImportacaoLinhaLog::find($this->logId) : null;
+
+        if ($this->isCancelled($logRow)) {
+            if ($logRow) {
+                $logRow->update([
+                    'status' => 'error',
+                    'mensagem' => 'Importação cancelada pelo usuário.',
+                    'processed_at' => now(),
+                ]);
+            }
+
+            return;
+        }
 
         if ($logRow) {
             $logRow->update([
@@ -84,5 +97,20 @@ class ImportOperacaoLinhaJob implements ShouldQueue
                     'processed_at' => now(),
                 ]);
         }
+    }
+
+    private function isCancelled(?ImportacaoLinhaLog $logRow): bool
+    {
+        if (! $logRow || ! $logRow->arquivo) {
+            return false;
+        }
+
+        if ($logRow->status === 'error' && str_contains(mb_strtolower((string) $logRow->mensagem), 'cancelad')) {
+            return true;
+        }
+
+        $cacheKey = 'importacao:cancelada:'.md5((string) $logRow->arquivo);
+
+        return (bool) Cache::get($cacheKey, false);
     }
 }

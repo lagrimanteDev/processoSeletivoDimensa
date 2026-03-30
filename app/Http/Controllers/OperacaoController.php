@@ -12,6 +12,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Maatwebsite\Excel\Facades\Excel;
@@ -120,9 +121,38 @@ class OperacaoController extends Controller
         ImportOperacoesJob::dispatch($filePath, $userId, $isAdmin)->onConnection('database');
         $this->startQueueWorkerInBackground($queueName);
 
+        Cache::forget($this->buildImportCancelCacheKey($filePath));
+
         return redirect()
             ->route('operacoes.index')
             ->with('status', 'Importação recebida. O processamento foi iniciado em segundo plano.');
+    }
+
+    public function cancelImport(Request $request)
+    {
+        $stats = $this->buildImportStats();
+        $latestFile = (string) ($stats['latest_file'] ?? '');
+
+        if ($latestFile === '') {
+            return redirect()
+                ->route('operacoes.index')
+                ->with('status', 'Nenhuma importação encontrada para cancelar.');
+        }
+
+        Cache::put($this->buildImportCancelCacheKey($latestFile), true, now()->addHours(6));
+
+        ImportacaoLinhaLog::query()
+            ->where('arquivo', $latestFile)
+            ->whereIn('status', ['queued', 'processing'])
+            ->update([
+                'status' => 'error',
+                'mensagem' => 'Importação cancelada pelo usuário.',
+                'processed_at' => now(),
+            ]);
+
+        return redirect()
+            ->route('operacoes.index')
+            ->with('status', 'Importação cancelada.');
     }
 
     private function startQueueWorkerInBackground(string $queueName): void
@@ -350,7 +380,12 @@ class OperacaoController extends Controller
             $scopeQuery->where('arquivo', $latestFile);
         }
 
-        $jobsPending = DB::table('jobs')->count();
+        $jobsPending = DB::table('jobs')
+            ->where(function ($query): void {
+                $query->where('payload', 'like', '%ImportOperacoesJob%')
+                    ->orWhere('payload', 'like', '%ImportOperacaoLinhaJob%');
+            })
+            ->count();
 
         if ($latestFile && $jobsPending === 0) {
             ImportacaoLinhaLog::query()
@@ -385,7 +420,7 @@ class OperacaoController extends Controller
             ->limit(5)
             ->get();
 
-        $isRunning = $jobsPending > 0 || $queued > 0 || $processing > 0;
+        $isRunning = $queued > 0 || $processing > 0;
         $isCompleted = $total > 0 && ! $isRunning;
 
         return [
@@ -402,5 +437,10 @@ class OperacaoController extends Controller
             'is_running' => $isRunning,
             'is_completed' => $isCompleted,
         ];
+    }
+
+    private function buildImportCancelCacheKey(string $filePath): string
+    {
+        return 'importacao:cancelada:'.md5($filePath);
     }
 }
