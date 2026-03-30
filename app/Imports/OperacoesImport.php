@@ -8,6 +8,7 @@ use App\Models\Operacao;
 use App\Models\Parcela;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Concerns\OnEachRow;
@@ -84,7 +85,7 @@ class OperacoesImport implements OnEachRow, WithHeadingRow, WithChunkReading, Sk
     {
         $cpfRaw = $this->value($row, ['cpf', 'cliente_cpf', 'cpf_cliente', 'cpf_do_cliente', 'documento', 'documento_cliente', 'numero_cpf', 'nr_cpf'])
             ?: $this->valueByKeywords($row, ['cpf']);
-        $cpf = trim((string) ($cpfRaw ?: ''));
+        $cpf = $this->normalizeCpf($cpfRaw);
         $conveniadaRef = trim((string) ($this->value($row, ['conveniada_codigo', 'codigo_conveniada', 'conveniada_id']) ?: ''));
         $conveniadaNome = trim((string) ($this->value($row, ['conveniada_nome', 'nome_conveniada']) ?: ''));
 
@@ -94,15 +95,14 @@ class OperacoesImport implements OnEachRow, WithHeadingRow, WithChunkReading, Sk
         }
 
         DB::transaction(function () use ($row, $cpf, $conveniadaRef, $conveniadaNome, $line): void {
-            $cliente = Cliente::updateOrCreate(
-                ['cpf' => $cpf],
-                [
-                    'nome' => (string) $this->value($row, ['nome_cliente', 'cliente_nome', 'nome']),
-                    'data_nascimento' => $this->parseDate($this->value($row, ['data_nascimento', 'cliente_data_nascimento', 'dt_nasc']), $line) ?? now()->toDateString(),
-                    'sexo' => (string) ($this->value($row, ['sexo', 'cliente_sexo']) ?: 'NAO_INFORMADO'),
-                    'email' => (string) ($this->value($row, ['cliente_email', 'email']) ?: "{$cpf}@sem-email.local"),
-                ]
-            );
+            $clientePayload = [
+                'nome' => (string) $this->value($row, ['nome_cliente', 'cliente_nome', 'nome']),
+                'data_nascimento' => $this->parseDate($this->value($row, ['data_nascimento', 'cliente_data_nascimento', 'dt_nasc']), $line) ?? now()->toDateString(),
+                'sexo' => (string) ($this->value($row, ['sexo', 'cliente_sexo']) ?: 'NAO_INFORMADO'),
+                'email' => (string) ($this->value($row, ['cliente_email', 'email']) ?: "{$cpf}@sem-email.local"),
+            ];
+
+            $cliente = $this->resolveClienteByCpf($cpf, $clientePayload);
 
             $conveniada = null;
 
@@ -197,6 +197,56 @@ class OperacoesImport implements OnEachRow, WithHeadingRow, WithChunkReading, Sk
                 }
             }
         });
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function resolveClienteByCpf(string $cpf, array $payload): Cliente
+    {
+        try {
+            return Cliente::updateOrCreate(['cpf' => $cpf], $payload);
+        } catch (QueryException $e) {
+            if (! $this->isDuplicateCpfException($e)) {
+                throw $e;
+            }
+
+            $cliente = Cliente::query()->where('cpf', $cpf)->first();
+
+            if (! $cliente) {
+                throw $e;
+            }
+
+            $cliente->fill($payload);
+            $cliente->save();
+
+            return $cliente;
+        }
+    }
+
+    private function isDuplicateCpfException(QueryException $e): bool
+    {
+        $message = mb_strtolower($e->getMessage());
+
+        return str_contains($message, 'duplicate entry')
+            && str_contains($message, 'clientes_cpf_unique');
+    }
+
+    private function normalizeCpf(mixed $value): string
+    {
+        $cpf = trim((string) ($value ?? ''));
+
+        if ($cpf === '') {
+            return '';
+        }
+
+        $onlyDigits = preg_replace('/\D+/', '', $cpf) ?: '';
+
+        if ($onlyDigits !== '') {
+            return $onlyDigits;
+        }
+
+        return $cpf;
     }
 
     private function nextCodigoIncremental(): string
