@@ -4,12 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Exports\OperacoesRelatorioExport;
 use App\Jobs\ImportOperacoesJob;
+use App\Models\ImportacaoLinhaLog;
 use App\Models\Operacao;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Http\JsonResponse;
 use Maatwebsite\Excel\Facades\Excel;
 
 class OperacaoController extends Controller
@@ -37,8 +40,9 @@ class OperacaoController extends Controller
 
         $operacoes = $query->paginate(15)->withQueryString();
         $statuses = collect(array_keys(self::STATUS_TRANSITIONS));
+        $importStats = $this->buildImportStats();
 
-        return view('operacoes.index', compact('operacoes', 'statuses'));
+        return view('operacoes.index', compact('operacoes', 'statuses', 'importStats'));
     }
 
     public function report(Request $request)
@@ -52,6 +56,29 @@ class OperacaoController extends Controller
         $fileName = 'relatorio-operacoes-'.$exportDate->format('Ymd-His').'.xlsx';
 
         return Excel::download(new OperacoesRelatorioExport($operacoes, $exportDate), $fileName);
+    }
+
+    public function importStats(): JsonResponse
+    {
+        $stats = $this->buildImportStats();
+
+        return response()->json([
+            'latest_file' => $stats['latest_file'],
+            'total' => $stats['total'],
+            'queued' => $stats['queued'],
+            'processing' => $stats['processing'],
+            'success' => $stats['success'],
+            'error' => $stats['error'],
+            'processed' => $stats['processed'],
+            'progress' => $stats['progress'],
+            'jobs_pending' => $stats['jobs_pending'],
+            'is_running' => $stats['is_running'],
+            'is_completed' => $stats['is_completed'],
+            'recent_errors' => $stats['recent_errors']->map(fn ($item) => [
+                'linha' => $item->linha,
+                'mensagem' => $item->mensagem,
+            ])->values(),
+        ]);
     }
 
     public function show(Operacao $operacao)
@@ -73,8 +100,6 @@ class OperacaoController extends Controller
 
     public function import(Request $request)
     {
-        @set_time_limit(0);
-
         $authUser = Auth::user();
         $isAdmin = $authUser instanceof User && $authUser->isAdmin();
         $userId = $authUser instanceof User ? $authUser->id : null;
@@ -85,11 +110,42 @@ class OperacaoController extends Controller
 
         $filePath = $request->file('arquivo')->store('imports', 'local');
 
-        ImportOperacoesJob::dispatch($filePath, $userId, $isAdmin);
+        $queueName = (string) config('queue.connections.database.queue', 'default');
+
+        ImportOperacoesJob::dispatch($filePath, $userId, $isAdmin)->onConnection('database');
+        $this->startQueueWorkerInBackground($queueName);
 
         return redirect()
             ->route('operacoes.index')
-            ->with('status', 'Importação iniciada. O processamento ocorre em segundo plano e pode levar alguns minutos.');
+            ->with('status', 'Importação recebida. O processamento foi iniciado em segundo plano.');
+    }
+
+    private function startQueueWorkerInBackground(string $queueName): void
+    {
+        $phpBinary = PHP_BINARY;
+        $artisanPath = base_path('artisan');
+
+        if (DIRECTORY_SEPARATOR === '\\') {
+            $command = sprintf(
+                'cmd /c start "" /B "%s" "%s" queue:work --queue=%s --timeout=0 --tries=1 --stop-when-empty',
+                $phpBinary,
+                $artisanPath,
+                $queueName,
+            );
+
+            @pclose(@popen($command, 'r'));
+
+            return;
+        }
+
+        $command = sprintf(
+            '%s %s queue:work --queue=%s --timeout=0 --tries=1 --stop-when-empty > /dev/null 2>&1 &',
+            escapeshellarg($phpBinary),
+            escapeshellarg($artisanPath),
+            escapeshellarg($queueName),
+        );
+
+        @exec($command);
     }
 
     public function updateStatus(Request $request, Operacao $operacao)
@@ -124,9 +180,34 @@ class OperacaoController extends Controller
                 ->withErrors(['status' => "Transição inválida: {$statusAtual} -> {$novoStatus}."]);
         }
 
+        if ($novoStatus === 'PAGO AO CLIENTE') {
+            if ($statusAtual !== 'APROVADA') {
+                return redirect()
+                    ->route('operacoes.show', $operacao)
+                    ->withErrors(['status' => 'Uma operação só pode ser PAGO AO CLIENTE quando estiver em APROVADA.']);
+            }
+
+            $hasPassedAssinaturaConcluida = $operacao->historicoStatus()
+                ->where(function ($query): void {
+                    $query->where('status_anterior', 'ASSINATURA CONCLUÍDA')
+                        ->orWhere('status_novo', 'ASSINATURA CONCLUÍDA');
+                })
+                ->exists();
+
+            if (! $hasPassedAssinaturaConcluida) {
+                return redirect()
+                    ->route('operacoes.show', $operacao)
+                    ->withErrors(['status' => 'Para marcar como PAGO AO CLIENTE, a operação deve já ter passado por ASSINATURA CONCLUÍDA.']);
+            }
+        }
+
+        $dataPagamentoAtualizada = $novoStatus === 'PAGO AO CLIENTE'
+            ? now()->toDateString()
+            : $operacao->data_pagamento;
+
         $operacao->update([
             'status' => $novoStatus,
-            'data_pagamento' => $novoStatus === 'PAGO AO CLIENTE' ? ($operacao->data_pagamento ?? now()->toDateString()) : $operacao->data_pagamento,
+            'data_pagamento' => $dataPagamentoAtualizada,
         ]);
 
         $operacao->historicoStatus()->create([
@@ -206,21 +287,105 @@ class OperacaoController extends Controller
             $cliente = trim((string) ($request->filled('cpf') ? $request->string('cpf') : $request->string('cliente')));
 
             $cpfAlphaNum = preg_replace('/[^A-Za-z0-9]+/', '', $cliente) ?: '';
-            $clienteUpper = mb_strtoupper($cliente);
-            $cpfAlphaNumUpper = mb_strtoupper($cpfAlphaNum);
 
-            $query->whereHas('cliente', function ($q) use ($cliente, $cpfAlphaNum, $clienteUpper, $cpfAlphaNumUpper): void {
+            $query->whereHas('cliente', function ($q) use ($cliente, $cpfAlphaNum): void {
                 $q->where('nome', 'like', $cliente.'%')
-                    ->orWhere('cpf', 'like', $cliente.'%')
-                    ->orWhereRaw('UPPER(cpf) like ?', [$clienteUpper.'%']);
+                    ->orWhere('cpf', 'like', $cliente.'%');
 
                 if ($cpfAlphaNum !== '' && $cpfAlphaNum !== $cliente) {
-                    $q->orWhere('cpf', 'like', $cpfAlphaNum.'%')
-                        ->orWhereRaw('UPPER(cpf) like ?', [$cpfAlphaNumUpper.'%']);
+                    $q->orWhere('cpf', 'like', $cpfAlphaNum.'%');
                 }
             });
         }
 
         return $query;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildImportStats(): array
+    {
+        $authUser = Auth::user();
+        $isAdmin = $authUser instanceof User && $authUser->isAdmin();
+        $userId = $authUser instanceof User ? $authUser->id : null;
+
+        $baseQuery = ImportacaoLinhaLog::query();
+
+        if (! $isAdmin) {
+            $baseQuery->where(function ($query) use ($userId): void {
+                if ($userId !== null) {
+                    $query->where('user_id', $userId)
+                        ->orWhereNull('user_id');
+
+                    return;
+                }
+
+                $query->whereNull('user_id');
+            });
+        }
+
+        $latestFile = (clone $baseQuery)
+            ->latest('id')
+            ->value('arquivo');
+
+        $scopeQuery = clone $baseQuery;
+
+        if ($latestFile) {
+            $scopeQuery->where('arquivo', $latestFile);
+        }
+
+        $jobsPending = DB::table('jobs')->count();
+
+        if ($latestFile && $jobsPending === 0) {
+            ImportacaoLinhaLog::query()
+                ->where('arquivo', $latestFile)
+                ->whereIn('status', ['queued', 'processing'])
+                ->where('created_at', '<', now()->subMinutes(1))
+                ->update([
+                    'status' => 'error',
+                    'mensagem' => 'Processamento interrompido. Reenvie a importação.',
+                    'processed_at' => now(),
+                ]);
+        }
+
+        $total = (clone $scopeQuery)->count();
+
+        $statusCounts = (clone $scopeQuery)
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $queued = (int) ($statusCounts['queued'] ?? 0);
+        $processing = (int) ($statusCounts['processing'] ?? 0);
+        $success = (int) ($statusCounts['success'] ?? 0);
+        $error = (int) ($statusCounts['error'] ?? 0);
+        $processed = $success + $error;
+        $progress = $total > 0 ? (int) round(($processed / $total) * 100) : 0;
+
+        $recentErrors = (clone $scopeQuery)
+            ->where('status', 'error')
+            ->select(['linha', 'mensagem'])
+            ->latest('id')
+            ->limit(5)
+            ->get();
+
+        $isRunning = $jobsPending > 0 || $queued > 0 || $processing > 0;
+        $isCompleted = $total > 0 && ! $isRunning;
+
+        return [
+            'latest_file' => $latestFile,
+            'total' => $total,
+            'queued' => $queued,
+            'processing' => $processing,
+            'success' => $success,
+            'error' => $error,
+            'processed' => $processed,
+            'progress' => $progress,
+            'recent_errors' => $recentErrors,
+            'jobs_pending' => $jobsPending,
+            'is_running' => $isRunning,
+            'is_completed' => $isCompleted,
+        ];
     }
 }

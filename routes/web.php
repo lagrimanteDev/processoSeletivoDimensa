@@ -14,6 +14,7 @@ Route::get('/dashboard', function () {
 
 Route::middleware('auth')->group(function () {
     Route::get('/operacoes', [OperacaoController::class, 'index'])->name('operacoes.index');
+    Route::get('/operacoes/import-stats', [OperacaoController::class, 'importStats'])->name('operacoes.import-stats');
     Route::get('/operacoes/relatorio', [OperacaoController::class, 'report'])->name('operacoes.report');
     Route::get('/operacoes/{operacao}', [OperacaoController::class, 'show'])->name('operacoes.show');
     Route::post('/operacoes/importar', [OperacaoController::class, 'import'])->name('operacoes.import');

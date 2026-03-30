@@ -31,7 +31,6 @@ class OperacoesDispatchRowsImport implements OnEachRow, WithHeadingRow, WithChun
             'user_id' => $this->userId,
             'status' => 'queued',
             'mensagem' => 'Linha enfileirada para processamento.',
-            'row_data' => $rowData,
         ]);
 
         ImportOperacaoLinhaJob::dispatch(
@@ -40,7 +39,7 @@ class OperacoesDispatchRowsImport implements OnEachRow, WithHeadingRow, WithChun
             $this->userId,
             $this->isAdmin,
             $log->id,
-        );
+        )->onConnection('database');
 
         $this->dispatched++;
     }

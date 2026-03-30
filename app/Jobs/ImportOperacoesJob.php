@@ -24,6 +24,7 @@ class ImportOperacoesJob implements ShouldQueue
         public bool $isAdmin,
     )
     {
+        $this->onConnection('database');
     }
 
     public function handle(): void
@@ -35,9 +36,9 @@ class ImportOperacoesJob implements ShouldQueue
 
         Excel::import($import, $this->filePath, 'local');
 
-        Log::info('Importação de operações enfileirada por linha', [
+        Log::info('Importação de operações processada por linha', [
             'arquivo' => $this->filePath,
-            'linhas_enfileiradas' => $import->dispatched,
+            'linhas_processadas' => $import->dispatched,
         ]);
 
         Storage::disk('local')->delete($this->filePath);

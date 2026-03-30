@@ -27,6 +27,7 @@ class ImportOperacaoLinhaJob implements ShouldQueue
         public bool $isAdmin,
         public ?int $logId = null,
     ) {
+        $this->onConnection('database');
     }
 
     public function handle(): void

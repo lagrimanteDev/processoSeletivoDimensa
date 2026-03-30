@@ -35,6 +35,66 @@
 				<p id="import-warning" class="hidden mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
 					Importação iniciada. Este processo pode levar alguns minutos.
 				</p>
+
+				<div class="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+					<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+						<div>
+							<h4 class="text-sm font-semibold text-indigo-900">Acompanhamento da importação</h4>
+							<p id="import-latest-file" class="text-xs text-indigo-800 mt-1">
+								@if ($importStats['latest_file'])
+									Arquivo: {{ $importStats['latest_file'] }}
+								@else
+									Nenhuma importação recente encontrada.
+								@endif
+							</p>
+						</div>
+						<span id="import-status-badge" class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium
+							{{ $importStats['is_running'] ? 'bg-amber-100 text-amber-800' : ($importStats['is_completed'] ? 'bg-emerald-100 text-emerald-800' : 'bg-green-100 text-green-800') }}">
+							{{ $importStats['is_running'] ? 'Processando...' : ($importStats['is_completed'] ? 'Importação concluída' : 'Sem processamento em andamento') }}
+						</span>
+					</div>
+
+					<div class="mt-3 h-2 w-full rounded bg-indigo-100">
+						<div id="import-progress-bar" class="h-2 rounded bg-indigo-600" style="width: {{ $importStats['progress'] }}%"></div>
+					</div>
+					<p id="import-progress-text" class="mt-2 text-xs text-indigo-900">{{ $importStats['processed'] }} de {{ $importStats['total'] }} linhas concluídas ({{ $importStats['progress'] }}%)</p>
+
+					<div class="mt-3 grid grid-cols-2 md:grid-cols-6 gap-2 text-xs">
+						<div class="rounded border border-slate-200 bg-white px-3 py-2">
+							<div class="text-slate-500">Total</div>
+							<div id="import-total" class="font-semibold text-slate-900">{{ $importStats['total'] }}</div>
+						</div>
+						<div class="rounded border border-violet-200 bg-white px-3 py-2">
+							<div class="text-violet-700">Jobs (DB)</div>
+							<div id="import-jobs" class="font-semibold text-violet-900">{{ $importStats['jobs_pending'] }}</div>
+						</div>
+						<div class="rounded border border-amber-200 bg-white px-3 py-2">
+							<div class="text-amber-700">Fila</div>
+							<div id="import-queued" class="font-semibold text-amber-900">{{ $importStats['queued'] }}</div>
+						</div>
+						<div class="rounded border border-blue-200 bg-white px-3 py-2">
+							<div class="text-blue-700">Processando</div>
+							<div id="import-processing" class="font-semibold text-blue-900">{{ $importStats['processing'] }}</div>
+						</div>
+						<div class="rounded border border-green-200 bg-white px-3 py-2">
+							<div class="text-green-700">Sucesso</div>
+							<div id="import-success" class="font-semibold text-green-900">{{ $importStats['success'] }}</div>
+						</div>
+						<div class="rounded border border-red-200 bg-white px-3 py-2">
+							<div class="text-red-700">Erros</div>
+							<div id="import-error" class="font-semibold text-red-900">{{ $importStats['error'] }}</div>
+						</div>
+					</div>
+
+					<div id="import-errors-box" class="mt-3 rounded border border-red-200 bg-red-50 p-3 {{ $importStats['recent_errors']->isNotEmpty() ? '' : 'hidden' }}">
+							<p class="text-xs font-semibold text-red-900 mb-2">Últimos erros</p>
+							<ul id="import-errors-list" class="space-y-1 text-xs text-red-800">
+								@foreach ($importStats['recent_errors'] as $importError)
+									<li>Linha {{ $importError->linha }}: {{ $importError->mensagem }}</li>
+								@endforeach
+							</ul>
+						</div>
+				</div>
 			</div>
 
 			<div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
@@ -133,6 +193,7 @@
 			const form = document.getElementById('import-form');
 			const warning = document.getElementById('import-warning');
 			const button = document.getElementById('import-button');
+			const statsUrl = '{{ route('operacoes.import-stats') }}';
 
 			if (!form || !warning || !button) {
 				return;
@@ -143,6 +204,89 @@
 				button.disabled = true;
 				button.textContent = 'Importando...';
 			});
+
+			const statusBadge = document.getElementById('import-status-badge');
+			const latestFile = document.getElementById('import-latest-file');
+			const progressBar = document.getElementById('import-progress-bar');
+			const progressText = document.getElementById('import-progress-text');
+			const totalEl = document.getElementById('import-total');
+			const jobsEl = document.getElementById('import-jobs');
+			const queuedEl = document.getElementById('import-queued');
+			const processingEl = document.getElementById('import-processing');
+			const successEl = document.getElementById('import-success');
+			const errorEl = document.getElementById('import-error');
+			const errorsBox = document.getElementById('import-errors-box');
+			const errorsList = document.getElementById('import-errors-list');
+
+			function applyStatusBadge(data) {
+				if (!statusBadge) return;
+
+				statusBadge.className = 'inline-flex items-center rounded-full px-3 py-1 text-xs font-medium';
+
+				if (data.is_running) {
+					statusBadge.classList.add('bg-amber-100', 'text-amber-800');
+					statusBadge.textContent = 'Processando...';
+					return;
+				}
+
+				if (data.is_completed) {
+					statusBadge.classList.add('bg-emerald-100', 'text-emerald-800');
+					statusBadge.textContent = 'Importação concluída';
+					return;
+				}
+
+				statusBadge.classList.add('bg-green-100', 'text-green-800');
+				statusBadge.textContent = 'Sem processamento em andamento';
+			}
+
+			function applyErrors(data) {
+				if (!errorsBox || !errorsList) return;
+
+				errorsList.innerHTML = '';
+
+				if (!data.recent_errors || data.recent_errors.length === 0) {
+					errorsBox.classList.add('hidden');
+					return;
+				}
+
+				data.recent_errors.forEach(function (item) {
+					const li = document.createElement('li');
+					li.textContent = 'Linha ' + item.linha + ': ' + item.mensagem;
+					errorsList.appendChild(li);
+				});
+
+				errorsBox.classList.remove('hidden');
+			}
+
+			function updateStats() {
+				fetch(statsUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+					.then(function (response) { return response.json(); })
+					.then(function (data) {
+						if (latestFile) {
+							latestFile.textContent = data.latest_file ? ('Arquivo: ' + data.latest_file) : 'Nenhuma importação recente encontrada.';
+						}
+
+						if (progressBar) {
+							progressBar.style.width = data.progress + '%';
+						}
+
+						if (progressText) {
+							progressText.textContent = data.processed + ' de ' + data.total + ' linhas concluídas (' + data.progress + '%)';
+						}
+
+						if (totalEl) totalEl.textContent = data.total;
+						if (jobsEl) jobsEl.textContent = data.jobs_pending;
+						if (queuedEl) queuedEl.textContent = data.queued;
+						if (processingEl) processingEl.textContent = data.processing;
+						if (successEl) successEl.textContent = data.success;
+						if (errorEl) errorEl.textContent = data.error;
+
+						applyStatusBadge(data);
+						applyErrors(data);
+					});
+			}
+
+			setInterval(updateStats, 5000);
 		});
 	</script>
 </x-app-layout>
