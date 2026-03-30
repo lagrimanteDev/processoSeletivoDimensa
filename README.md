@@ -49,15 +49,16 @@ php artisan key:generate
 ```dotenv
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
-DB_PORT=3306
+DB_PORT=3307
 DB_DATABASE=processo_seletivo
 DB_USERNAME=root
 DB_PASSWORD=
+DB_QUEUE_RETRY_AFTER=900
 ```
 
 > ⚠️ **Importante:** Verifique qual porta seu MySQL está usando:
-> - **Instalação padrão:** porta `3306`
-> - **XAMPP:** geralmente porta `3307`
+> - **Este projeto está configurado por padrão para:** porta `3307`
+> - **Instalação padrão do MySQL (fora XAMPP):** geralmente `3306`
 >
 > Se criou o banco em porta diferente, ajuste `DB_PORT` acima e execute:
 > ```bash
@@ -152,10 +153,11 @@ php artisan key:generate
 ```dotenv
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
-DB_PORT=3306
+DB_PORT=3307
 DB_DATABASE=processo_seletivo
 DB_USERNAME=root
 DB_PASSWORD=
+DB_QUEUE_RETRY_AFTER=900
 ```
 
 **Importante:** Se seu MySQL está em outra porta (ex.: XAMPP usa 3307 por padrão), ajuste `DB_PORT`:
@@ -167,10 +169,10 @@ DB_PORT=3307
 **Crie o banco de dados** (se não existir):
 
 ```bash
-mysql -u root -P 3306 -e "CREATE DATABASE processo_seletivo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -u root -P 3307 -e "CREATE DATABASE processo_seletivo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 ```
 
-> Se usar porta 3307: `mysql -u root -P 3307 -e "..."`
+> Se usar porta 3306: `mysql -u root -P 3306 -e "..."`
 
 #### 🔵 Opção B: SQLite (mais rápido para testes)
 
@@ -245,7 +247,7 @@ php artisan serve
 
 **Terminal 2 - Worker da fila:**
 ```bash
-php artisan queue:work --queue=default --timeout=0 --tries=1
+php artisan queue:work --queue=default --sleep=1 --tries=1 --timeout=600 --max-time=3600 --memory=512
 ```
 
 **Terminal 3 - Logs em tempo real:**
@@ -289,6 +291,21 @@ npm run dev
 5. Acompanhe o progresso na tela
 
 ### Regras de Importação
+
+### 🚀 Importação massiva (XLSX com 50.000+ linhas)
+
+Para alto volume em **um único arquivo `.xlsx`**:
+
+- mantenha apenas **1 importação por vez**;
+- use `composer run dev` durante todo o processamento;
+- não feche o terminal do worker enquanto houver itens `queued/processing`;
+- aguarde o progresso na tela (o processamento é feito em lotes para evitar travamentos).
+
+Configuração aplicada no projeto para estabilidade:
+
+- processamento em lote no backend;
+- `DB_QUEUE_RETRY_AFTER=900`;
+- worker com `--timeout=600 --max-time=3600 --memory=512`.
 
 #### Colunas Obrigatórias
 
@@ -439,12 +456,12 @@ php artisan migrate:refresh --seed
 
 **Verificação:**
 1. Verifique se há worker rodando: `composer run dev` deve estar ativo
-2. Cheque jobs pendentes: `php artisan queue:failed`
+2. Cheque jobs falhados: `php artisan queue:failed`
 3. Verifique logs: `storage/logs/laravel.log`
 4. Se houver muitos jobs, limpe e recomeçe:
    ```bash
    php artisan queue:flush
-   php artisan db:seed  # Recria dados de teste
+  php artisan db:seed  # Recria dados iniciais
    ```
 
 ### ❌ "CORS error ao acessar a aplicação"
